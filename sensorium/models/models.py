@@ -48,9 +48,23 @@ def stacked_core_full_gauss_readout(
     hidden_channels_shifter=5,
     shift_layers=3,
     gamma_shifter=0,
+    regularizer_type='l1',
+    feature_reg_weight=1,
     shifter_bias=True,
     hidden_padding=None,
     core_bias=True,
+    gamma_hidden=0,
+    
+    readout_normalize=True,
+    output_nonlinearity_type="elu",
+    positive_spatial=True,
+    positive_weights=False,
+    readout_sparsity=0.0133342,
+    final_batchnorm_scale=False,
+    
+    cor_rot_equivar=True,
+    factorized=False,
+    **kwargs,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -97,50 +111,105 @@ def stacked_core_full_gauss_readout(
     )
 
     set_random_seed(seed)
-    grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(grid_mean_predictor, dataloaders)
-
-    core = Stacked2dCore(
-        input_channels=core_input_channels,
-        hidden_channels=hidden_channels,
-        input_kern=input_kern,
-        hidden_kern=hidden_kern,
-        layers=layers,
-        gamma_input=gamma_input,
-        skip=skip,
-        final_nonlinearity=final_nonlinearity,
-        bias=core_bias,
-        momentum=momentum,
-        pad_input=pad_input,
-        batch_norm=batch_norm,
-        hidden_dilation=hidden_dilation,
-        laplace_padding=laplace_padding,
-        input_regularizer=input_regularizer,
-        stack=stack,
-        depth_separable=depth_separable,
-        linear=linear,
-        attention_conv=attention_conv,
-        hidden_padding=hidden_padding,
-        use_avg_reg=use_avg_reg,
-    )
+#     grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(grid_mean_predictor, dataloaders)
+    
+    if not cor_rot_equivar: 
+        core = Stacked2dCore(
+            input_channels=core_input_channels,
+            hidden_channels=hidden_channels,
+            input_kern=input_kern,
+            hidden_kern=hidden_kern,
+            layers=layers,
+            gamma_input=gamma_input,
+            skip=skip,
+            final_nonlinearity=final_nonlinearity,
+            bias=core_bias,
+            momentum=momentum,
+            pad_input=pad_input,
+            batch_norm=batch_norm,
+            hidden_dilation=hidden_dilation,
+            laplace_padding=laplace_padding,
+            input_regularizer=input_regularizer,
+            stack=stack,
+            depth_separable=depth_separable,
+            linear=linear,
+            attention_conv=attention_conv,
+            hidden_padding=hidden_padding,
+            use_avg_reg=use_avg_reg,
+        )
+    else:
+        core = RotationEquivariant2dCore(
+            input_channels=core_input_channels,
+            hidden_channels=hidden_channels,
+            input_kern=input_kern,
+            hidden_kern=hidden_kern,
+            layers=layers,
+            gamma_input=gamma_input,
+            skip=skip,
+            final_nonlinearity=final_nonlinearity,
+            bias=core_bias,
+            momentum=momentum,
+            pad_input=pad_input,
+            batch_norm=batch_norm,
+            hidden_dilation=hidden_dilation,
+            laplace_padding=laplace_padding,
+            input_regularizer=input_regularizer,
+            stack=stack,
+            depth_separable=depth_separable,
+            linear=linear,
+            attention_conv=attention_conv,
+            hidden_padding=hidden_padding,
+            use_avg_reg=use_avg_reg,
+            final_batchnorm_scale=final_batchnorm_scale,
+            gamma_hidden=gamma_hidden,
+            **kwargs,
+        )
 
     in_shapes_dict = {
         k: get_module_output(core, v[in_name])[1:]
         for k, v in session_shape_dict.items()
     }
+    if factorized:
+        n_neurons_dict = {k: v[out_name][1] for k, v in session_shape_dict.items()}
+        #         in_shapes_dict = {k: v[in_name] for k, v in session_shape_dict.items()}
+        input_channels = [v[in_name][1] for v in session_shape_dict.values()]
+        if readout_bias:
+            mean_activity_dict = {}
+            for key, value in dataloaders.items():
+                _, targets = next(iter(value))[:2]
+                mean_activity_dict[key] = targets.mean(0)
 
-    readout = MultipleFullGaussian2d(
-        in_shape_dict=in_shapes_dict,
-        loader=dataloaders,
-        n_neurons_dict=n_neurons_dict,
-        init_mu_range=init_mu_range,
-        bias=readout_bias,
-        init_sigma=init_sigma,
-        gamma_readout=gamma_readout,
-        gauss_type=gauss_type,
-        grid_mean_predictor=grid_mean_predictor,
-        grid_mean_predictor_type=grid_mean_predictor_type,
-        source_grids=source_grids,
-    )
+        readout = MultipleFullFactorized2d(
+            in_shape_dict=in_shapes_dict,
+            loader=dataloaders,
+            n_neurons_dict=n_neurons_dict,
+            bias=readout_bias,
+            mean_activity_dict=mean_activity_dict if readout_bias else None,
+            spatial_and_feature_reg_weight=readout_sparsity,
+            positive_spatial=positive_spatial,
+            positive_weights=positive_weights,
+            normalize=readout_normalize,
+            init_noise=init_sigma,
+        )
+    else:
+        grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(
+            grid_mean_predictor, dataloaders
+        )
+        readout = MultipleFullGaussian2d(
+            in_shape_dict=in_shapes_dict,
+            loader=dataloaders,
+            n_neurons_dict=n_neurons_dict,
+            init_mu_range=init_mu_range,
+            bias=readout_bias,
+            init_sigma=init_sigma,
+            gamma_readout=gamma_readout,
+            feature_reg_weight=feature_reg_weight,
+            gauss_type=gauss_type,
+            grid_mean_predictor=grid_mean_predictor,
+            grid_mean_predictor_type=grid_mean_predictor_type,
+            source_grids=source_grids,
+            regularizer_type=regularizer_type,
+        )
 
     if shifter is True:
         data_keys = [i for i in dataloaders.keys()]
