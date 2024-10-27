@@ -15,8 +15,6 @@ setup(
 #     add datajoint and git installations
         "neuralpredictors @ git+https://github.com/sinzlab/neuralpredictors.git@5e86a8222db48b6eab271e8ff672fa67b29012f8",
         "nnfabrik @ git+https://github.com/sinzlab/nnfabrik.git@29f22bc95841897d734532c02b77423e602ba21f",
-        "neuralpredictors==0.3.0",
-        "nnfabrik==0.2.1",
         "scikit-image>=0.19.1",
         "lipstick",
         "numpy>=1.22.0",
