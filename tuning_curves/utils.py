@@ -94,3 +94,27 @@ def load_dataloader(data_path, device, dataset_config=DATASET_CONFIG):
     dataset_config["paths"] = filenames
     dataloaders = get_data(dataset_fn, dataset_config)
     return dataloaders
+
+
+def gaussian_forward(model, images, session_k):
+    loc_out = model.core(images)
+    sel_idx = loc_out.shape[-1] // 2 + loc_out.shape[-1] % 2
+    loc_out = loc_out[:, :, sel_idx, sel_idx].unsqueeze(-1).unsqueeze(-1)
+    out = fake_forward(model.readout[session_k], loc_out)
+    if model.nonlinearity_type == "elu":
+        out = model.nonlinearity_fn(out + model.offset) + 1
+    else:
+        out = model.nonlinearity_fn(out)
+    return out
+
+
+def add_behaviour_as_channel(beh, images, device):
+    behavior_chosen = torch.stack(
+        [
+            torch.ones(3, images.shape[2], images.shape[3])
+            * torch.Tensor(beh).reshape(3, 1, 1)
+        ]
+        * images.shape[0]
+    ).to(device)
+    images = torch.concat([images, behavior_chosen], axis=1)
+    return images.float()
