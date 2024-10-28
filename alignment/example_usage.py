@@ -9,7 +9,7 @@ path = 'example.npy' # a file of shape N x dim, where N is number fo neurons and
 save_path = 'aligned_example.npy'
 
 def align(W, num_features=16, num_orientations=8):
-    W = angles[dim][s]
+    # W = angles[dim][s]
     W = normalise_W(W, normalise=True)
     W = np.transpose(np.reshape(W, (W.shape[0], num_orientations, num_features)), (0, 2, 1))
 
